@@ -38,7 +38,7 @@ function getSoundStretchVersion() {
 function getFFmpegVersion() {
 	exec("ffmpeg -version 2>&1",$ffmpeg_version);
 	foreach ($ffmpeg_version as $line) {
-		if (strpos($line,"FFmpeg version") !== false) {
+		if (strpos($line,"version") !== false) {
 			preg_match("/\d+\.\d+\.\d+/",$line,$match);
 			return $match[0];
 		}
