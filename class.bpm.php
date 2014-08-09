@@ -1,7 +1,7 @@
 <?php
 
 /*
-* bpm_detect rev.1
+* bpm_detect rev.2
 * written by deseven
 * dependencies: php 5.2+, soundtouch, (sox, mpg123 OR ffmpeg)
 * website: http://deseven.info
@@ -23,7 +23,7 @@ class bpm_detect {
 	protected $split_seconds;
 	protected $file;
 	protected $file_ext;
-	protected $file_length;
+	protected $file_length = 0;
 	protected $delete_file = false;
 	protected $use_ffmpeg = false;
 
@@ -42,12 +42,24 @@ class bpm_detect {
 		}
 		if (!$length) {
 			if (!$this->use_ffmpeg) {
-				$file_length = exec('mpg123 -t '.$this->file.".".$this->file_ext.' 2>&1 | grep "finished" | cut -f1 -d"]" | tr -d "["');
-				$file_length = explode(":",$file_length);
-				$this->file_length = intval($file_length[0],10)*60 + intval($file_length[1],10);
+				exec('mpg123 -t '.$this->file.".".$this->file_ext.' 2>&1',$file_length);
+				foreach ($file_length as $line) {
+					if (strpos($line,$this->file.".".$this->file_ext." finished") !== false) {
+						$line = preg_match("/\d+\:\d+/",$line,$match);
+						$line = explode(":",$match[0]);
+						$this->file_length = intval($line[0],10)*60 + intval($line[1],10);
+						break;
+					}
+				}			
 			} else {
-				$file_length = exec('ffprobe '.$this->file.".".$this->file_ext.' -show_format 2>&1 | grep "duration=" | cut -f2 -d"="');
-				$this->file_length = round($file_length);
+				exec('ffprobe '.$this->file.".".$this->file_ext.' -show_format 2>&1',$file_length);
+				foreach ($file_length as $line) {
+					if (strpos($line,"duration=") !== false) {
+						$line = explode("=",$line);
+						$this->file_length = round($line[1]);
+						break;
+					}
+				}
 			}
 		} else {
 			$this->file_length = $length;
@@ -81,7 +93,7 @@ class bpm_detect {
 		if (!$this->use_ffmpeg) {
 			exec("mpg123 -q -w ".$this->file.".wav ".$this->file.".".$this->file_ext." 2>&1");
 		} else {
-			exec("ffmpeg -i ".$this->file.".".$this->file_ext." -acodec pcm_s16le ".$this->file.".wav 2>&1");
+			exec("ffmpeg -y -i ".$this->file.".".$this->file_ext." -acodec pcm_s16le ".$this->file.".wav 2>&1");
 		}
 		$this->file_ext = "wav";
 	}
@@ -110,10 +122,17 @@ class bpm_detect {
 							if (!$this->use_ffmpeg) {
 								exec("sox ".$this->file.".".$this->file_ext." ".$this->file."-$piece.".$this->file_ext." trim ".$piece * $this->split_seconds." ".$this->split_seconds." 2>&1");
 							} else {
-								exec("ffmpeg -ss ".$piece * $this->split_seconds." -t ".$this->split_seconds." -i ".$this->file.".".$this->file_ext." -acodec copy ".$this->file."-$piece.".$this->file_ext." 2>&1");
+								exec("ffmpeg -y -ss ".$piece * $this->split_seconds." -t ".$this->split_seconds." -i ".$this->file.".".$this->file_ext." -acodec copy ".$this->file."-$piece.".$this->file_ext." 2>&1");
 							}
 							if (file_exists($this->file."-$piece.".$this->file_ext)) {
-								$piece_bpm = exec("soundstretch ".$this->file."-$piece.".$this->file_ext.' -bpm 2>&1 | grep "Detected" | cut -f4 -d" "');
+								exec("soundstretch ".$this->file."-$piece.".$this->file_ext.' -bpm 2>&1',$piece_bpm);
+								foreach ($piece_bpm as $line) {
+									if (strpos($line,"Detected BPM rate") !== false) {
+										$line = explode(" ",$line);
+										$piece_bpm = round($line[3]);
+										break;
+									}
+								}
 								unlink($this->file."-$piece.".$this->file_ext);
 								$pieces_bpm[] = round(intval($piece_bpm));
 							}
@@ -125,7 +144,14 @@ class bpm_detect {
 				}
 			} else {
 				$this->split_seconds = -1;
-				$average_bpm = exec("soundstretch ".$this->file.".".$this->file_ext.' -bpm 2>&1 | grep "Detected" | cut -f4 -d" "');
+				exec("soundstretch ".$this->file.".".$this->file_ext.' -bpm 2>&1',$average_bpm);
+				foreach ($average_bpm as $line) {
+					if (strpos($line,"Detected BPM rate") !== false) {
+						$line = explode(" ",$line);
+						$average_bpm = round($line[3]);
+						break;
+					}
+				}
 				if (strlen($average_bpm)) {
 					$bpm = round($average_bpm);
 				}
