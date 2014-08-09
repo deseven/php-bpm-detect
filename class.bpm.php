@@ -7,6 +7,12 @@
 * website: http://deseven.info
 */
 
+const USE_FFMPEG = true;
+const USE_SOX = false;
+const DETECT_LENGTH = false;
+const SPLIT = true;
+const DEF = false;
+
 class bpm_detect {
 
 	const split_seconds = 16;
