@@ -50,7 +50,7 @@ class bpm_detect {
 						$this->file_length = intval($line[0],10)*60 + intval($line[1],10);
 						break;
 					}
-				}			
+				}
 			} else {
 				exec('ffprobe '.$this->file.".".$this->file_ext.' -show_format 2>&1',$file_length);
 				foreach ($file_length as $line) {
@@ -104,9 +104,13 @@ class bpm_detect {
 
 	public function detectBPM($split = false,$split_seconds = false) {
 		$bpm = 0;
-		if ($this->file_ext == "mp3") {
-			$this->convertToWAV();
-			$this->delete_file = true;
+		if ($this->file_ext != "wav") {
+			if ((!$this->use_ffmpeg) && ($this->file_ext != "mp3")) {
+				return 0;
+			} else {
+				$this->convertToWAV();
+				$this->delete_file = true;
+			}
 		}
 		if (!$split_seconds) {
 			$this->split_seconds = $this::split_seconds;
@@ -152,7 +156,7 @@ class bpm_detect {
 						break;
 					}
 				}
-				if (strlen($average_bpm)) {
+				if ((!is_array($average_bpm)) && (strlen($average_bpm))) {
 					$bpm = round($average_bpm);
 				}
 			}
