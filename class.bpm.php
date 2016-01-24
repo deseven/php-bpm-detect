@@ -1,7 +1,7 @@
 <?php
 
 /*
-* bpm_detect rev.3
+* bpm_detect rev.4
 * written by deseven
 * dependencies: php 5.2+, soundtouch, (sox, mpg123 OR ffmpeg)
 * website: http://deseven.info
@@ -22,10 +22,12 @@ class bpm_detect {
 	protected $start_time;
 	protected $split_seconds;
 	protected $file;
+	protected $file_short;
 	protected $file_ext;
 	protected $file_length = 0;
 	protected $delete_file = false;
 	protected $use_ffmpeg = false;
+	protected $cmdlog = array();
 
 	function __construct($filepath,$length = false,$use_ffmpeg = false,$path = false) {
 		$this->start_time = microtime(true);
@@ -36,20 +38,23 @@ class bpm_detect {
 		}
 		$this->workdir = getcwd();
 		$filedir = pathinfo($filepath,PATHINFO_DIRNAME);
-		if (strlen($filedir)) {
+		if ((strlen($filedir)) && ($filedir != ".")) {
 			$this->file = $filedir."/".pathinfo($filepath,PATHINFO_FILENAME);
 		} else {
 			$this->file = pathinfo($filepath,PATHINFO_FILENAME);
 		}
+		$this->file_short = pathinfo($filepath,PATHINFO_FILENAME);
 		$this->file_ext = pathinfo($filepath,PATHINFO_EXTENSION);
 		if ($use_ffmpeg) {
 			$this->use_ffmpeg = true;
 		}
 		if (!$length) {
 			if (!$this->use_ffmpeg) {
-				exec('mpg123 -t "'.$this->file.".".$this->file_ext.'" 2>&1',$file_length);
+				$cmd = 'mpg123 -t "'.$this->file.".".$this->file_ext.'" 2>&1';
+				exec($cmd,$file_length);
+				$this->cmdlog[] = $cmd;
 				foreach ($file_length as $line) {
-					if (strpos($line,$this->file.".".$this->file_ext." finished") !== false) {
+					if (strpos($line,$this->file_short.".".$this->file_ext." finished") !== false) {
 						$line = preg_match("/\d+\:\d+/",$line,$match);
 						$line = explode(":",$match[0]);
 						$this->file_length = intval($line[0],10)*60 + intval($line[1],10);
@@ -57,7 +62,9 @@ class bpm_detect {
 					}
 				}
 			} else {
-				exec('ffprobe "'.$this->file.".".$this->file_ext.'" -show_format 2>&1',$file_length);
+				$cmd = 'ffprobe "'.$this->file.".".$this->file_ext.'" -show_format 2>&1';
+				exec($cmd,$file_length);
+				$cmdlog = $cmd;
 				foreach ($file_length as $line) {
 					if (strpos($line,"duration=") !== false) {
 						$line = explode("=",$line);
@@ -86,6 +93,10 @@ class bpm_detect {
 		return $time;
 	}
 
+	public function getCmdLog() {
+		return $this->cmdlog;
+	}
+
 	public function getSplitSeconds() {
 		if ($this->split_seconds) {
 			return $this->split_seconds;
@@ -96,9 +107,13 @@ class bpm_detect {
 
 	private function convertToWAV() {
 		if (!$this->use_ffmpeg) {
-			exec('mpg123 -q -w "'.$this->file.'.wav" "'.$this->file.".".$this->file_ext.'" 2>&1');
+			$cmd = 'mpg123 -q -w "'.$this->file.'.wav" "'.$this->file.".".$this->file_ext.'" 2>&1';
+			exec($cmd);
+			$this->cmdlog[] = $cmd;
 		} else {
-			exec('ffmpeg -y -i "'.$this->file.".".$this->file_ext.'" -acodec pcm_s16le "'.$this->file.'.wav" 2>&1');
+			$cmd = 'ffmpeg -y -i "'.$this->file.".".$this->file_ext.'" -acodec pcm_s16le "'.$this->file.'.wav" 2>&1';
+			exec($cmd);
+			$this->cmdlog[] = $cmd;
 		}
 		$this->file_ext = "wav";
 	}
@@ -129,12 +144,18 @@ class bpm_detect {
 					if ($pieces) {
 						for ($piece = 1; $piece <= $pieces; $piece++) {
 							if (!$this->use_ffmpeg) {
-								exec('sox "'.$this->file.".".$this->file_ext.'" "'.$this->file."-$piece.".$this->file_ext.'" trim '.$piece * $this->split_seconds." ".$this->split_seconds." 2>&1");
+								$cmd = 'sox "'.$this->file.".".$this->file_ext.'" "'.$this->file."-$piece.".$this->file_ext.'" trim '.$piece * $this->split_seconds." ".$this->split_seconds." 2>&1";
+								exec($cmd);
+								$this->cmdlog[] = $cmd;
 							} else {
-								exec('ffmpeg -y -ss '.$piece * $this->split_seconds." -t ".$this->split_seconds.' -i "'.$this->file.".".$this->file_ext.'" -acodec copy "'.$this->file."-$piece.".$this->file_ext.'" 2>&1');
+								$cmd = 'ffmpeg -y -ss '.$piece * $this->split_seconds.' -i "'.$this->file.".".$this->file_ext.'" -t '.$this->split_seconds.' -acodec copy "'.$this->file."-$piece.".$this->file_ext.'" 2>&1';
+								exec($cmd);
+								$this->cmdlog[] = $cmd;
 							}
 							if (file_exists($this->file."-$piece.".$this->file_ext)) {
-								exec('soundstretch "'.$this->file."-$piece.".$this->file_ext.'" -bpm 2>&1',$piece_bpm);
+								$cmd = 'soundstretch "'.$this->file."-$piece.".$this->file_ext.'" -bpm 2>&1';
+								exec($cmd,$piece_bpm);
+								$this->cmdlog[] = $cmd;
 								foreach ($piece_bpm as $line) {
 									if (strpos($line,"Detected BPM rate") !== false) {
 										$line = explode(" ",$line);
@@ -153,7 +174,9 @@ class bpm_detect {
 				}
 			} else {
 				$this->split_seconds = -1;
-				exec('soundstretch "'.$this->file.".".$this->file_ext.'" -bpm 2>&1',$average_bpm);
+				$cmd = 'soundstretch "'.$this->file.".".$this->file_ext.'" -bpm 2>&1';
+				exec($cmd,$average_bpm);
+				$this->cmdlog[] = $cmd;
 				foreach ($average_bpm as $line) {
 					if (strpos($line,"Detected BPM rate") !== false) {
 						$line = explode(" ",$line);
